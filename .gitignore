@@ -1,0 +1,5 @@
+.venv/
+__pycache__/
+.DS_Store
+predict_output.csv
+sort_output.csv

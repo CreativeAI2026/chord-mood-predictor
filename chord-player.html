@@ -1,0 +1,1038 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>8コード進行プレイヤー</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Red+Hat+Mono:wght@400;500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: a sticky player deck (8-step strip, keyboard, transport) beside a flat, scannable library of progressions. */
+:root {
+  --bg: #ECEFF3;
+  --panel: #F9FAFC;
+  --ink: #161D27;
+  --muted: #5A6675;
+  --line: #D3D9E1;
+  --line-strong: #AEB8C5;
+  --chip: #E1E6EC;
+  --accent: #3346C9;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #DDE2F9;
+  --hot: #F0A31C;
+  --hot-ink: #1B1404;
+  --key-w: #FFFFFF;
+  --key-b: #1D2530;
+  --warn: #B3261E;
+  --f-display: "Dela Gothic One", "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --f-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+  --f-mono: "Red Hat Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10141A; --panel: #181E27; --ink: #E7ECF3; --muted: #93A0B1;
+    --line: #2A3340; --line-strong: #414E60; --chip: #232B37;
+    --accent: #98A5FF; --accent-ink: #0E1220; --accent-soft: #252D52;
+    --hot: #F5B544; --hot-ink: #1B1404;
+    --key-w: #D9DEE6; --key-b: #0A0D12; --warn: #FF8A80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10141A; --panel: #181E27; --ink: #E7ECF3; --muted: #93A0B1;
+  --line: #2A3340; --line-strong: #414E60; --chip: #232B37;
+  --accent: #98A5FF; --accent-ink: #0E1220; --accent-soft: #252D52;
+  --hot: #F5B544; --hot-ink: #1B1404;
+  --key-w: #D9DEE6; --key-b: #0A0D12; --warn: #FF8A80;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 15px;
+  line-height: 1.6;
+}
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app {
+  max-width: 1240px;
+  margin-inline: auto;
+  padding-inline: 20px;
+  padding-block: 24px 48px;
+  display: grid;
+  gap: 20px;
+}
+
+/* ---------- header ---------- */
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+.top h1 {
+  margin: 0;
+  font-family: var(--f-display);
+  font-weight: 400;
+  font-size: clamp(22px, 5vw, 30px);
+  line-height: 1.2;
+  text-wrap: balance;
+}
+.top-sub {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.filebtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.filebtn:hover { background: var(--chip); }
+.filebtn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.filebtn input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.msg { margin: 0; color: var(--warn); font-size: 13px; }
+
+/* ---------- layout ---------- */
+.layout { display: grid; gap: 24px; align-items: start; }
+@media (min-width: 1080px) {
+  .layout { grid-template-columns: 420px minmax(0, 1fr); gap: 28px; }
+  .deck {
+    position: sticky;
+    top: calc(env(safe-area-inset-top, 0px) + 16px);
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+  }
+}
+
+/* ---------- deck ---------- */
+.deck {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.now { display: grid; gap: 2px; min-width: 0; }
+.now-no {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.now-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.step {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 6px 7px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color .08s, border-color .08s;
+}
+.step:hover { border-color: var(--accent); }
+.step-n { font-family: var(--f-mono); font-size: 10.5px; color: var(--muted); }
+.step-name {
+  font-family: var(--f-mono);
+  font-weight: 700;
+  font-size: clamp(15px, 4.3vw, 19px);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.step-raw { font-family: var(--f-mono); font-size: 10.5px; color: var(--muted); overflow-wrap: anywhere; }
+.step.on { background: var(--hot); border-color: var(--hot); color: var(--hot-ink); }
+.step.on .step-n, .step.on .step-raw { color: var(--hot-ink); }
+.step.bad .step-name { color: var(--warn); }
+
+.keys { display: block; width: 100%; height: auto; }
+.wk { fill: var(--key-w); stroke: var(--line-strong); stroke-width: 1; }
+.bk { fill: var(--key-b); }
+.wk.up, .bk.up { fill: var(--hot); }
+.wk.bass, .bk.bass { fill: var(--accent); }
+.klabel { fill: var(--muted); font-family: var(--f-mono); font-size: 8px; }
+.keys-legend {
+  display: flex; flex-wrap: wrap; gap: 4px 14px;
+  margin: 6px 0 0; font-size: 12px; color: var(--muted);
+}
+.keys-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; }
+.keys-legend .l-bass { background: var(--accent); }
+.keys-legend .l-up { background: var(--hot); }
+
+.rates {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 16px;
+}
+.rate { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; }
+.rate dt { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.rate dd { margin: 0; display: contents; }
+.pips { display: inline-grid; grid-auto-flow: column; gap: 3px; }
+.pips i { width: 9px; height: 9px; border-radius: 2px; border: 1px solid var(--line-strong); }
+.pips i.f { background: var(--ink); border-color: var(--ink); }
+.rate b { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: 13px; min-width: 1ch; text-align: right; }
+
+.transport { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 40px; padding: 0 14px;
+  border: 1px solid var(--line-strong); border-radius: 6px;
+  background: transparent; cursor: pointer;
+}
+.btn:hover { background: var(--chip); }
+.btn svg { width: 14px; height: 14px; }
+.btn-play {
+  flex: 1 1 120px;
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+  font-weight: 700;
+}
+.btn-play:hover { background: var(--accent); filter: brightness(1.08); }
+.check { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 4px; cursor: pointer; }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); }
+
+.controls { display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+.ctl { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); align-items: center; gap: 10px; }
+.ctl-label { font-size: 13px; color: var(--muted); }
+.ctl-range { display: grid; grid-template-columns: minmax(0, 1fr) 4.5em; align-items: center; gap: 10px; }
+.ctl-range input[type="range"] { width: 100%; accent-color: var(--accent); }
+.ctl-range output { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: 13px; text-align: right; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; }
+.seg button {
+  min-height: 34px; padding: 0 6px;
+  border: 0; border-left: 1px solid var(--line-strong);
+  background: transparent; font-size: 13px; cursor: pointer;
+}
+.seg button:first-child { border-left: 0; }
+.seg button:hover { background: var(--chip); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); font-weight: 700; }
+.hint { margin: 0; font-size: 12px; color: var(--muted); }
+.hint kbd {
+  font-family: var(--f-mono); font-size: 11px;
+  border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 4px;
+}
+
+/* ---------- library ---------- */
+.library { display: grid; gap: 10px; min-width: 0; container-type: inline-size; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.tools input[type="search"], .tools select {
+  min-height: 38px; padding: 0 10px;
+  border: 1px solid var(--line-strong); border-radius: 6px;
+  background: var(--panel);
+}
+.tools input[type="search"] { flex: 1 1 200px; min-width: 0; }
+.tools select { flex: 0 1 auto; max-width: 100%; }
+.lib-meta {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px;
+  margin: 0; font-size: 12px; color: var(--muted);
+}
+.rows { border-top: 1px solid var(--line-strong); }
+.row {
+  display: grid; gap: 6px; width: 100%;
+  padding: 10px 10px 11px;
+  border: 0; border-bottom: 1px solid var(--line);
+  background: transparent; text-align: left; cursor: pointer;
+}
+.row:hover { background: var(--chip); }
+.row[aria-pressed="true"] { background: var(--accent-soft); }
+.row-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.row-no { font-family: var(--f-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.row-note { font-weight: 500; overflow-wrap: anywhere; line-height: 1.4; }
+.bars { display: inline-grid; grid-auto-flow: column; gap: 2px; align-items: end; height: 15px; }
+.bars i { width: 4px; height: calc(var(--h) * 20%); background: var(--muted); border-radius: 1px; }
+.row-chords { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
+.c {
+  font-family: var(--f-mono); font-size: 12.5px; line-height: 1.5;
+  padding: 2px 5px; border-radius: 4px;
+  background: var(--chip);
+  overflow-wrap: anywhere;
+}
+.row:hover .c, .row[aria-pressed="true"] .c { background: var(--panel); }
+.row .c.on { background: var(--hot); color: var(--hot-ink); font-weight: 700; }
+.c.bad { color: var(--warn); }
+@container (max-width: 540px) {
+  .row-chords { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.empty { margin: 0; padding: 24px 10px; color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div>
+      <h1>8コード進行プレイヤー</h1>
+      <p class="top-sub" id="topSub"></p>
+    </div>
+    <label class="filebtn" for="csvFile">別のCSVを読み込む<input type="file" id="csvFile" accept=".csv,text/csv"></label>
+  </header>
+  <p class="msg" id="msg" role="status" hidden></p>
+
+  <div class="layout">
+    <section class="deck" aria-label="プレイヤー">
+      <div class="now">
+        <span class="now-no" id="nowNo"></span>
+        <h2 class="now-title" id="nowTitle"></h2>
+      </div>
+
+      <ol class="steps" id="steps"></ol>
+
+      <div>
+        <svg class="keys" id="keys" viewBox="0 0 421 74" role="img" aria-label="鳴っている音を示す鍵盤"></svg>
+        <p class="keys-legend"><span><i class="l-bass"></i>ベース音</span><span><i class="l-up"></i>和音</span></p>
+      </div>
+
+      <dl class="rates" id="rates"></dl>
+
+      <div class="transport">
+        <button type="button" class="btn" id="prev" aria-label="前のコード進行">
+          <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2 1h2v12H2zM13 1v12L5 7z" fill="currentColor"/></svg>
+        </button>
+        <button type="button" class="btn btn-play" id="play">
+          <svg viewBox="0 0 14 14" aria-hidden="true"><path id="playIcon" d="M3 1l10 6-10 6z" fill="currentColor"/></svg>
+          <span id="playText">再生</span>
+        </button>
+        <button type="button" class="btn" id="next" aria-label="次のコード進行">
+          <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M10 1h2v12h-2zM1 1v12l8-6z" fill="currentColor"/></svg>
+        </button>
+        <label class="check" for="loop"><input type="checkbox" id="loop">ループ</label>
+      </div>
+
+      <div class="controls">
+        <div class="ctl">
+          <label class="ctl-label" for="bpm">テンポ</label>
+          <div class="ctl-range">
+            <input type="range" id="bpm" min="50" max="200" step="1" value="110">
+            <output id="bpmOut" for="bpm">110 BPM</output>
+          </div>
+        </div>
+        <div class="ctl">
+          <span class="ctl-label" id="lblBeats">1コード</span>
+          <div class="seg" id="segBeats" role="group" aria-labelledby="lblBeats">
+            <button type="button" id="beats-1" data-v="1" aria-pressed="false">1拍</button>
+            <button type="button" id="beats-2" data-v="2" aria-pressed="false">2拍</button>
+            <button type="button" id="beats-4" data-v="4" aria-pressed="true">4拍</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <span class="ctl-label" id="lblPattern">弾き方</span>
+          <div class="seg" id="segPattern" role="group" aria-labelledby="lblPattern">
+            <button type="button" id="pat-hold" data-v="hold" aria-pressed="true">白玉</button>
+            <button type="button" id="pat-beat" data-v="beat" aria-pressed="false">刻み</button>
+            <button type="button" id="pat-arp" data-v="arp" aria-pressed="false">アルペジオ</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <span class="ctl-label" id="lblTone">音色</span>
+          <div class="seg" id="segTone" role="group" aria-labelledby="lblTone">
+            <button type="button" id="tone-piano" data-v="piano" aria-pressed="true">ピアノ</button>
+            <button type="button" id="tone-pad" data-v="pad" aria-pressed="false">パッド</button>
+            <button type="button" id="tone-chip" data-v="chip" aria-pressed="false">8bit</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <label class="ctl-label" for="vol">音量</label>
+          <div class="ctl-range">
+            <input type="range" id="vol" min="0" max="100" step="1" value="80">
+            <output id="volOut" for="vol">80</output>
+          </div>
+        </div>
+        <p class="hint"><kbd>Space</kbd> 再生と停止　<kbd>↑</kbd><kbd>↓</kbd> 前後の進行　和音のマスを押すとその和音だけ鳴ります</p>
+      </div>
+    </section>
+
+    <section class="library" aria-label="コード進行の一覧">
+      <div class="tools">
+        <input type="search" id="q" placeholder="曲名やコードで検索  例: 蠍, F:min" aria-label="曲名やコードで検索">
+        <select id="sort" aria-label="並び順">
+          <option value="no">番号順</option>
+          <option value="sadness">sadness が高い順</option>
+          <option value="tension">tension が高い順</option>
+          <option value="strength">strength が高い順</option>
+          <option value="uniqueness">uniqueness が高い順</option>
+        </select>
+      </div>
+      <p class="lib-meta"><span id="count"></span><span>右端のバーは左から sadness・tension・strength・uniqueness</span></p>
+      <div class="rows" id="rows"></div>
+    </section>
+  </div>
+</div>
+
+<script type="text/plain" id="csvData">Chord1,Chord2,Chord3,Chord4,Chord5,Chord6,Chord7,Chord8,sadness,tension,strength,uniqueness,備考(使った曲など)
+C:maj,F:maj,G:maj,C:maj,A:min,D:min,G:maj,C:maj,1,1,4,1,Gemini
+C:maj,G:maj,A:min,C:maj,F:maj,C:maj,F:min,C:maj,2,1,3,1,Gemini
+C:min,Ab:maj,Eb:maj,Bb:maj,C:min,Ab:maj,F:min,G:maj,4,4,4,2,Gemini
+F:maj,G:maj,E:min7,A:min7,D:min7,E:maj7,A:min7,G:min7,2,1,3,5,Gemini
+C:maj,Eb:maj,F:maj,C:maj,C:maj,Eb:maj,Bb:maj,C:maj,1,2,5,1,Gemini
+C:min,F:min7,Bb:maj,Eb:maj,Ab:maj,D:dim,G:7,C:min,5,3,3,3,Gemini
+A:min,E:min,F:maj,C:maj,D:min7,G:maj,Ab:maj,Bb:maj,2,1,5,2,Gemini
+C:maj,Bb:maj,F:maj,C:maj,A:min,G:maj,F:maj,G:maj,1,3,4,2,Gemini
+D:min7,G:7,C:maj7,A:7,D:min7,E:7,A:min7,A:7,1,4,4,3,Gemini
+C:maj7,D:maj,B:min7,E:min7,A:min7,D:7,F:maj7,F:min,3,2,2,3,Gemini
+F:maj7,E:7,A:min,E:min7,F:maj7,G:7,A:min7,E:min7,3,3,4,2,ミッドナイトスワン
+A:min,F:maj7,C:maj,D:maj,F:maj,C:maj,D:min,E:maj,4,4,5,4,this game
+C:maj,C:maj,C:7,C:7,F:maj,C:maj,D:min7,G:maj,1,1,4,2,ミアレ
+C:maj,F:maj,C:maj,G:maj,A:maj,A:maj,D:min,F:aug,2,2,3,5,ミアレ
+D:min7,G:7,C:maj,A:7,D:min,G:maj,C:sus4,C:maj,2,3,5,3,ミアレ
+F:min,Eb:maj,C#:maj,C:maj,F:maj,F:min,C:min,G:maj,5,5,5,5,蠍
+Ab:maj7,Ab:maj7,C:min,G:min7,Ab:maj7,Ab:maj7,C:min,G:min7,4,5,4,3,ASGORE - toby fox
+C:maj,E:7,F:maj,F:min,E:min,A:maj,D:min,F:min,3,3,2,4,夏の恋人
+E:min,B:maj,E:min,E:maj,A:min,B:maj,C:maj,D:maj,3,3,3,4,蠍
+C:min,C:min7,Ab:maj7,C:min7,F:min7,Eb:maj7,D:min7,Eb:aug,4,3,2,4,Marigold (Deemo)
+E:min,Gb:maj,B:maj,B:min,A:min,G:maj,Gb:maj,B:maj,4,4,5,4,蠍
+C:maj7,C:maj7,B:hdim7,E:maj,A:min,A:min,F:maj7,D:min7,4,2,1,4,ナイトオンザプラネット-クリープハイプ
+D:min7,G:7,E:min7,A:7,D:min7,E:7,A:min,A:min,4,2,2,2,最初から今まで
+C:maj,C:maj7,F:maj7,F:aug,E:min7,A:7,D:min7,G:9,1,1,1,5,my memory
+C:maj,G:maj,A:min,E:min,F:maj,D:min,G:maj,C:maj,1,3,4,1,Государственный гимн СССР
+F:maj,G:maj,E:min,F:maj,F:maj,G:maj,E:min,A:min,1,2,5,1,王道進行
+F:maj,C:maj,G:maj,A:min,F:maj,C:maj,G:maj,A:min,3,2,3,1,4-1-5-6 進行
+F:maj7,E:7,A:min7,C:7,F:maj7,E:7,A:min7,C:7,4,2,3,1,丸の内進行
+C:maj,B:min,E:min,G:maj,E:min,D:maj,G:maj,B:min,2,2,3,3,t.A.T.u - All The Things She Said
+C:maj,E:min,A:min,F:maj,C:maj,F:maj,G:sus4,C:maj,2,2,2,2,Boston - More Than a Feeling
+C:maj,D:min,F:min,F:maj,Bb:maj,E:min,D:min,C:maj,2,2,2,4,Bill Withers - Lean on Me
+C:maj,G:maj,F:maj,C:maj,F:maj,C:maj,D:7,G:maj,1,2,3,1,Billy Joel - Piano Man
+C:maj,G:maj,F:maj,G:maj,C:maj,G:maj,F:maj,G:maj,2,1,4,1,blink - 182 - All The Small Things
+C:maj,F:maj,G:maj,C:maj,F:maj,G:maj,C:maj,F:maj,3,2,3,1,Bob Dylan - Like a Rolling Stone
+F:maj,G:maj,A:min,D:maj,F:maj,F:min,C:maj,A:min7,4,2,2,4,Bruno Mars - When I Was Your Man
+C:maj,F:maj,A:min7,G:maj,C:maj,F:maj,A:min7,G:maj,4,3,2,2,Demi Lovato - Skyscraper
+A:min7,C:maj,F:maj,G:maj,A:min7,E:maj,F:maj,C:maj,1,4,4,2,天国 - Mrs GREEN APPLE
+C:maj,G:maj,A:min,F:maj,C:maj,G:maj,A:min,F:maj,2,2,4,1,Rachel Platten - Fight Song
+C:min,G:maj,Ab:maj,Eb:maj,C:min,G:maj,Ab:maj,Eb:maj,4,4,3,3,Melanie Martinez - Cake
+C:min,Ab:maj,Bb:maj,F:maj,C:min,Ab:maj,Bb:maj,F:maj,3,4,2,3,"Melanie Martinez - Tag, You're It"
+C:maj,Eb:maj,D:min7,E:sus4,A:min,G:6,F:min,F:hdim7,4,5,4,5,Monster - 嵐
+C:maj7,C:maj7,B:hdim7,E:aug,A:min7,G:min,F:maj,E:min,3,2,2,2,kisshug
+F:maj7,F:maj7,E:min,A:min7,D:min,E:maj,A:min,C:maj,3,4,4,2,kisshug
+C:maj7,F:maj7,E:min7,A:min7,F:maj7,D:min7,G:7,C:maj7,4,2,2,3,亡き王女パヴァーヌ
+F:maj7,F:maj,E:min7,Eb:dim,D:min7,D:min7,G:maj,G:maj,3,2,3,4,もっと
+F:maj7,E:7,A:min7,G:min7,F:maj7,E:min7,D:min7,C:maj7,3,2,4,4,もっと
+A:min,D:min,E:min,D:min,A:min,D:min,E:min,E:maj,4,4,4,1,愛をとりもどせ!!
+A:min,G:maj,D:min7,E:maj,D:min7,E:min7,F:maj7,E:maj,4,5,5,2,愛をとりもどせ!!
+A:min,G:maj,E:7,A:min,D:min7,E:7,A:min,E:min,3,2,4,1,アゲアゲエブリナイト
+F:maj7,G:sus4,E:min7,C:7,F:maj7,G:sus4,E:7,E:7,1,5,5,4,パラシューター
+D:min7,D:min7,E:min7,A:7,D:min7,D:min7,E:min7,A:7,1,2,5,2,パラシューター
+D:min,G:maj,C:maj,F:maj,D:min,G:maj,C:maj,A:min,3,3,2,2,The Strokers - Happy Ending
+D:min,A:min,G:maj,F:maj,G:maj,F:maj,Cmaj,A:min,3,4,3,3,MUSE - Be With You
+C:maj,F:maj,G:7,C:maj,C:maj,F:maj,G:7,E:7,1,2,5,2,勇気りんりん 
+F:maj,G:maj,C:maj,C:min,F:maj,G:maj,C:maj,C:min,2,2,3,3,White Reaper - Pages
+A:min,D:7,G:maj,C:maj,A:min,D:7,G:maj,C:maj,3,4,3,2,勇気りんりん 
+C:min,C:min7,Bb:maj,C:min,F:min,Ab:maj,G:maj,C:min,1,3,4,3,DAGames - Build Our Machine
+C:maj,C:aug,C:6,C:7,D:min,G:maj,C:maj,C:maj,2,5,2,4,おジャ魔女カーニバル
+C:min,Ab:maj,Eb:maj,G:min7,Ab:maj,F:min,Eb:maj,F:min,4,4,3,3,Starset - It Has Begun
+E:min,C:maj,D:maj,G:maj,E:min,Gb:maj,B:min,B:7,5,1,1,3,Prayer X - King Gnu
+A:min7,F:maj,G:maj,C:maj,A:min7,F:maj,G:maj,C:maj,3,2,2,3,gemini
+G:maj,C:min,Bb:maj,Eb:maj,Ab:maj,F:min,D:maj,B:maj,4,4,2,5,Black Gryph0n - INSANE
+F:maj7,F:min6,E:min7,A:maj,F:maj7,F:min6,E:min7,A:maj,2,1,2,2,walkin
+C:maj,F:maj,G:maj,Ab:dim,C:maj,F:maj,G:maj,G:maj,1,3,4,2,よるのあと
+C:maj,C:maj,E:min,E:min,G:min6,G:min6,A:maj,A:maj,1,5,5,4,climax jump
+C:7,F:7,D:7,G:7,C:7,Eb:7,Ab:7,G:7,1,4,5,5,太陽曰く
+A:min,D:7,B:7,E:7,A:min,C:7,F:7,E:7,4,4,5,2,太陽
+C:maj,G:maj,A:min,E:min7,F:maj,C:maj,D:min7,G:7,1,3,5,1,負けないで
+D:min7,G:7,E:maj,A:min,Gb:hdim,B:maj,D:min,G:maj,1,4,4,5,卒業
+C:maj,C:maj,E:min,E:min,G:min,A:7,D:min7,D:min7,3,5,5,5,卒業
+F:min,D:hdim7,E:min,A:7,D:min7,E:min,F:maj,F:min,3,4,3,5,卒業
+B:min,D:maj,G:maj,Gb:maj,B:min,D:maj,G:maj,Gb:maj,5,2,3,3,Pryer X - King Gnu
+C:maj,A:min,F:maj,G:maj,C:maj,A:min,F:maj,G:maj,2,2,2,1,ドキドキ文芸部
+C:maj,F:maj,G:maj,A:min7,G:min,F:maj7,G:7,C:maj,2,1,1,2,Jesus bleibet meine Freude
+C:maj,F:maj,C:maj,A:min,D:min,E:min,G:7,C:maj,2,1,2,2,Jesus bleibet meine Freude
+C:maj,A:7,D:min,G:7,C:maj,E:7,F:maj,Gb:7,1,2,1,4,Cooking Mama
+C:maj,G:sus4,F:maj,C:maj,A:min7,C:9,F:maj,G:sus4,4,1,1,3,えほん - Mrs.GREEN APPLE
+C:min,Ab:maj,F:min,G:sus4,C:min,Ab:maj,F:min,G:sus4,2,4,3,3,Melanie Martinez - Mad Hatter
+C:min,Ab:sus2,Bb:maj,Bb:maj,Eb:maj,Ab:maj,Bb:maj,Bb:maj,1,2,4,3,Bon Jovi - Living On A Prayer
+Eb:maj,Bb:7,C:min,Ab:maj,C:min,F:sus4,Bb:maj,Eb:sus4,1,4,4,5,不明
+C:maj,D:min,E:min,E:min,E:7,E:7,A:min,A:min7,3,4,5,3,カブトムシ
+C:maj,E:min,D:min7,G:7,E:hdim7,D:min,G:7,C:maj,2,2,1,2,あなた
+F:maj7,C:maj,B:hdim7,A:min,F:maj7,C:maj,G:maj,A:min,5,3,4,2,はっぴラッキーチャッピー
+F:maj7,G:maj,E:min7,A:min7,D:min7,C:9,Bb:maj7,G:maj,1,4,5,3,love so sweet
+C:maj,C:maj,C:sus4,Cmaj,A:min,F:maj,D:7,G,1,5,5,3,僕たちの未来
+F:min,A:dim7,F:maj,Bb:sus4,Bb:maj,Bb:maj,D:min,D:min,1,4,3,4,ANiMA
+F:maj7,G:maj,E:min7,A:min7,B:min7,E:aug,A:min7,C:7,5,2,4,4,エイリアンズ
+D:min7,G:7,C:maj7,E:min7,D:min7,G:7,C:maj7,A:7,3,4,2,4,愛のcoda
+A:min,D:min7,G:maj,C:maj,E:7,A:min,D:min6,E:7,4,4,4,3,異邦人
+D:min7,E:7,A:min,A:min,D:min6,E:7,A:sus4,A:maj,2,2,4,4,異邦人
+F:maj,F:min,E:min7,A:min,D:maj,D:7,G:maj,G:maj,2,4,5,2,LOVE AFFAIR
+F:maj,E:maj,A:min,D:maj,F:maj,G:maj,C:maj7,C:maj7,2,2,4,2,LOVE AFFAIR
+C:maj,F:maj,A:min,G:min,F:maj,C:maj7,D:7,G:maj,1,4,5,4,透明人間
+C:maj,C:maj,E:7,E:7,A:min7,A:min7,F:min7,G:7,2,4,4,3,罪と罰
+F:maj,G:maj,E:7,A:min,D:7,D:7,G:maj,G:maj,2,2,4,1,今宵の月のように
+C:maj,E:min,Bb:dim,A:maj,D:min,Db:aug,D:min7,G:maj,2,5,5,5,クラシック
+C:6,F:maj7,E:min7,A:7,F:maj7,E:min7,D:min7,G:maj,1,3,4,2,T字路
+E:min,E:maj,A:min,Bb:maj,F:maj,C:maj,D:min,C:maj,2,4,3,4,相思相愛
+D:min7,G:maj,C:maj7,A:min,D:min7,G:maj,C:maj,C:maj,1,1,2,1,さらば恋人
+F:maj,D:7,G:maj,E:7,A:min7,G:6,F:maj,F:maj,2,4,4,4,透明人間
+C:maj,C:maj,G:maj,E:maj,A:min,A:min,F:maj,G:maj,2,3,3,2,クラシック
+E:min,A:min,Bb:maj,A:min,E:min7,A:min7,C:maj,C:maj,3,2,3,5,漂流教室
+A:min,C:maj,F:maj7,E:min7,A:min,D:min,E:min7,E:7,4,5,4,4,Automatic
+D:min9,G:maj,E:min7,A:maj,D:min9,G:maj,C:maj9,C:7,1,2,5,4,Tell me baby
+C:maj7,C:maj7,B:hdim7,E:7,A:min7,A:min7,G:min7,Gb:aug,1,1,2,5,Tziro
+F:maj,G:maj,E:min,D:min,C:maj,E:maj,A:min,A:min,4,2,2,3,名前は片思い
+C:maj,C:maj,Gb:hdim7,Gb:hdim7,F:maj,E:maj,A:min,A:min,5,4,3,4,愛のうた
+F:maj,G:maj,E:min7,A:min7,F:maj,G:maj,C:sus4,E:7,4,4,3,2,Steady
+D:min7,G:sus4,C:maj,C:7,D:min7,C:sus4,C:maj,C:7,1,2,2,2,Girl
+F:maj7,Bb:maj,E:min7,Eb:dim,F:min7,G:min7,Ab:maj7,C:aug,2,5,2,5,Blue in Green
+C:maj,E:7,A:min7,C:maj,F:maj,C:maj,D:min7,G:7,1,3,4,1,相思相愛
+C:maj,C:aug,F:maj,D:maj,G:maj,G:7,E:sus4,G:maj,1,4,5,3,ロマンス
+F:maj7,E:min,D:min,C:maj,F:maj7,Eb:maj,D:min,E:maj,2,4,4,4,その目に映して
+D:min7,G:7,C:maj7,A:7,D:min7,G:7,C:maj7,A:7,3,1,4,2,KillBill
+C:maj,C:7,F:maj,F:min,E:min7,A:maj,D:min7,G:maj,2,1,1,4,SweetMEMORIES
+C:maj,C:maj,B:dim,E:maj,A:min,G:maj,F:maj,F:min,4,3,4,2,少年少女
+C:maj,C:maj,G:maj,E:maj,A:min,Ab:aug,C:maj,Gb:dim,2,3,3,3,少年少女
+C:maj,E:aug,A:min7,C:maj,F:maj,F:maj,G:sus4,G:maj,2,5,5,5,suimemo
+D:min,Ab:dim,A:min,Gb:dim,F:maj,Ab:aug,A:min9,A:min9,4,4,5,5,不可思議のカルテ
+C:maj,F:dim,C:maj,C:maj,A:7,Db:dim,D:min,D:min,3,2,2,4,歌うたいのバラッド
+B:hdim,E:7,A:min,Gb:hdim,F:maj,F:maj,F:min,F:min,2,4,2,4,歌うたいのバラッド
+C:maj,C:maj,F:maj,F:min,D:min7,D:min7,G:sus4,G:maj,1,4,5,2,桃色片想い
+C#:maj,F:maj,Bb:min,C#:maj,F#:maj,F#:maj,F#:min,F#:min,4,1,1,3,HAPPY BIRTHDAY - back number
+C#:maj,Ab:maj,A:min7,F:min7,F#:maj,C#:maj,Eb:min7,Ab:maj,2,3,2,2,HAPPY BIRTHDAY - back number
+C:maj,F:maj,G:maj,C:maj,C:maj,F:maj,G:maj,C:maj,1,2,1,1,Super Mario Bros. Main Theme
+G#:maj,C:maj,G#:maj,C:maj,G#:maj,C:maj,D:7,G:maj,2,4,3,4,Super Mario Bros. Main Theme
+F:maj7,G:maj,F:maj7,G:maj,E:min7,C:dim,D:min7,G:7,3,1,1,4,Zelda's Lullaby
+Bb:maj7,A:min7,G:min7,F:maj7,Bb:maj7,A:min7,Ab:7,G:min7,4,2,1,5,Zelda's Lullaby
+D:min7,D:min7,C:maj7,A:7,D:min7,E:min7,A:min7,C:7,3,2,2,4,華麗なる死闘
+F:maj7,E:7,A:min7,G:min7,F:maj7,E:7,A:min7,G:min7,2,2,3,2,一難 - Penthouse
+C:maj9,C:maj9,B:min7,B:min7,A:min7,C:maj,G:maj7,E:aug,2,4,3,5,...恋に落ちたら - Penthouse
+C:maj7,B:min7,A:min7,G:maj7,C:maj7,B:min7,A:min7,C#:min7,3,1,3,5,...恋に落ちたら - Penthouse
+C:min,C:min,Ab:maj,Bb:maj,C:min,C:min,Ab:maj,Bb:maj,2,5,5,2,HOT LIMIT
+C:min,C:min,F:maj,F:maj,Ab:maj,Eb:maj,F:maj,G:maj,2,3,4,3,HOT LIMIT
+C:min,C:min,F:maj,F:maj,Ab:maj,Eb:maj,Bb:maj,C:min,2,3,4,3,HOT LIMIT
+B:maj,Ab:min,C#:maj,Eb:min,B:maj,Ab:min,F:min7,Bb:maj,3,4,5,3,HOT LIMIT
+C:maj,G:maj,A:min,D:min7,C:maj,G:maj,A:min,F:maj,2,3,4,3,旅立ちの日に
+C:maj,A:min7,G:maj,F:maj,C:maj,A:min7,G:maj,F:maj,2,2,2,2,天体観測
+E:min,C:maj,G:maj,D:maj,E:min,C:maj,G:maj,D:maj,2,4,4,1,ジターバグ
+E:min,C:maj,G:maj,D:maj,E:min,C:maj,D:sus4,D:maj,1,4,5,3,前前前世
+C:maj,F:maj,G:maj,A:min,D:min,C:maj,F:maj,G:maj,1,4,5,2,青い春 - SUPER BEAVER
+C:maj,C:maj,G:maj,E:maj,A:min,G:maj,F:maj,G:sus4,3,2,2,3,青い春 - SUPER BEAVER
+C:maj,F:maj7,G:maj,A:min7,C:maj,F:maj7,D:min7,G:7,3,3,2,3,片想い - SUPER BEAVER
+A:min,G:7,F:maj7,C:maj,D:min7,E:7,A:min7,G:min7,4,2,3,4,片想い - SUPER BEAVER
+F:maj,E:min7,A:min7,C:min7,F:maj,E:min7,A:min7,C:maj,3,2,2,3,your song - SUPER BEAVER
+Ab:maj7,G:7,C:min7,C#:maj7,Ab:maj7,G:7,C:min7,C#:maj7,4,1,1,2,東京フラッシュ
+C:maj7,B:7,E:min,G:7,C:maj7,D:maj,E:min7,D:min7,3,4,3,3,革命道中
+F:maj,G:maj,A:min7,E:min,F:maj,G:maj,A:min7,E:min,2,3,4,2,ミュージック - サカナクション
+F:maj7,G:maj,A:min,A:min,A:min,G:maj,A:min,A:min,3,3,3,4,夜の踊り子 - サカナクション
+F:maj7,G:sus4,C:maj,A:min7,F:maj7,G:sus4,C:maj,A:min7,1,2,3,3,夜の踊り子 - サカナクション
+F#:maj,Ab:maj,C#:maj,F:7,F#:maj,Ab:maj,Bb:min7,Eb:min7,2,2,4,3,ミスター・ブルースカイ
+Bb:min7,Eb:7,Ab:maj,C#:maj,Bb:min7,Eb:7,Ab:maj,F#:maj,2,2,3,2,ミスター・ブルースカイ
+D:maj,D:maj,G:maj,Bb:dim,B:min,B:min7,G:maj,Bb:6,2,4,5,4,メメント・モリ - 大森元貴
+D:maj,A:maj,B:min,B:min7,G:maj,D:maj,E:min7,A:maj,1,3,4,3,メメント・モリ - 大森元貴
+G#:min7,B:maj,E:sus2,B:maj,G#:min,B:maj,E:sus2,B:maj,3,3,2,4,水流のロック
+C:maj7,F:maj7,E:min7,A:min7,D:min7,E:min7,F:min7,G:maj,1,2,2,3,Family song - 星野源
+C:maj,B:dim7,E:7,A:min7,Ab:min7,G:min7,C:7,D:min7,2,3,2,5,Family song - 星野源
+D:maj7,A:maj,B:min7,D:maj,D:maj7,A:maj,B:min7,D:maj,3,1,1,3,帰ろう - 藤井風
+F:maj7,E:min7,G:9,D:min7,G:7,C:maj7,G:min7,F#:dim7,4,4,2,5,帰ろう - 藤井風
+Db:maj,C:maj,F:maj,Eb:maj,Db:maj,C:aug,F:min,Ab:maj,3,2,2,4,神山羊 - Yellow
+C:min7,Ab:maj7,D:min7,G:maj,Ab:maj7,G;maj,C:min7,Ab:maj,2,3,3,4,悪魔の踊り方
+C:min7,G:min7,Gb:7,F:min7,Ab:7,G:7,C:min7,G:min7,3,4,3,5,あぶく
+F:maj,G:maj,E:min,A:min,F:maj,G:maj,C:maj,G:maj,3,3,4,2,思想犯
+A:min,D:min,G:maj,C:maj,A:min,F:maj,D:min,C:maj,4,3,2,2,沈める街
+A:min,F:maj,G:maj,C:maj,F:maj,D:min7,E:min7,F:maj,4,2,2,3,藍二乗
+A:min,F:maj,C:maj,G:maj,A:min,F:maj,C:maj,G:maj,4,4,2,1,アンインストール
+F:maj,C:maj,G:sus4,G:maj,A:min,F:maj,C:maj,G:maj,2,2,2,2,第六感
+A:min,G:maj,C:maj,G:maj,A:min,G:maj,C:maj,G:maj,2,3,2,2,Q?
+F:maj,G:maj,E:min,A:min,F:maj,G:maj,E:min7,A:min,2,2,2,2,No title
+A:min,C:maj,A:min,G:maj,Bb:maj,A:min,G:maj,F:maj,2,4,4,4,red fracion
+C:min,Ab:maj,G:maj,C:min,Ab:maj,F:min,G:maj,C:min,2,4,4,2,自主
+C:min,Bb:maj,Ab:maj,G:maj,C:min,Bb:maj,Ab:maj,G:maj,4,4,2,3,タタラ
+C:min,Ab:maj,Eb:maj,Bb:maj,C:min,Ab:maj,Eb:maj,Bb:maj,1,4,4,2,Hello
+C:min,F:maj,Bb:maj,Eb:maj,Ab:maj,Db:maj,G:maj,C:min,3,4,4,5,タナトフォビア
+A:min,C:maj,D:maj,F:maj,E:maj,A:min,C:maj,D:maj,3,4,4,4,聖者の行進
+C:maj7,D:maj,Db:min7,C:maj7,D:maj,B:maj,C:maj7,E:min,4,4,2,5,鏡面の波
+G:maj,C:min,A:dim,Ab:maj,G:maj,F:min,G:maj,C:min,3,5,2,5,Loveit?
+C:min,F:min,Ab:maj,Bb:maj,C:min,F:min,Ab:maj,Bb:maj,3,4,2,2,Shape of you
+C:min,G:min,Ab:maj,Eb:maj,F:min,Eb:maj,D:dim,G:maj,4,4,4,4,痛いの痛いの飛んでいけ
+C:min,G:min,C:min,G:min,Ab:maj,G:maj,C:min,A:dim,3,3,3,3,錠剤
+C:min,Ab:maj,Bb:maj,Eb:maj,Ab:maj,G:7,C:min,Bb:maj,3,4,3,3,砂の惑星
+C:maj,F:maj,C:maj,A:min,D:min,C:maj,F:maj,G:7,2,1,3,2,"Jesu, Joy of Man's Desiring"
+C:maj,D:maj,E:min,F:maj,E:min,D:min7,G:min7,C:maj,1,2,2,4,動く、動く
+F:maj,C:maj,G:maj,A:min,C:maj,F:maj,C:maj,G:maj,4,2,1,2,雨だれの歌
+C:min,D:min7,Eb:maj,D:min,C:min,Ab:maj,Eb:maj,Bb:maj,4,4,2,4,忘れじの言の葉
+A:min,E:min,F:maj,C:maj,A:min,E:min,F:maj,C:maj,4,2,2,3,頂戴な
+A:min7,E:min,F:maj,C:maj,A:min,C:maj,F:maj,C:maj,3,3,4,3,臨界ダイバー
+C:maj,Ab:maj,C:min7,D:maj,Bb:maj7,C:min,C:min7,D:maj,2,4,4,5,Carol of the Bells
+A:min7,D:min,G:maj,C:maj,E:maj,A:min7,D:min,G:maj,4,2,1,3,死別
+C:maj7,D:maj,E:min,B:min,C:maj7,A:min,E:min,E:min7,2,4,4,4,もぬけのからだ
+A:min7,F:maj7,C:maj,G:maj,A:min7,F:maj7,E:min7,A:min7,3,2,4,3,アンチテーゼ・ジャンクガール
+A:min7,B:min7,C:maj7,C:maj,C:maj7,D:maj,B:min7,E:min7,4,4,2,4,踊るマネキン、唄う阿呆
+F:maj7,G:maj,E:min7,E:min,F:maj7,G:maj7,C:maj,C:7,2,4,4,3,ぼくらの16bit戦争
+Ab:maj7,Bb:maj,C:min7,Db:maj,F:min7,G:min7,C:min7,Db:maj,2,3,4,4,ノイド
+Ab:maj,G:maj,C:min,Eb:maj,C:min,F:min,Bb:maj,C:min,3,4,3,3,愛麗絲
+Ab:maj,Bb:maj,C:min,Eb:maj,Ab:maj,B :maj,C:min,G:7,2,2,3,3,飛燕
+A:min,D:min,E:maj,A:min,A:min,D:min,B:7,E:maj,5,5,4,4,わかれうた
+A:min,Ab:dim,C:maj,A:7,D:min7,Eb:dim,E:7,E:maj,5,5,5,5,Distiny
+A:7,D:min,G:maj,C:maj,F:maj7,D:min,E:7,A:min,3,2,2,2,傘
+A:min,F:maj,C:maj,E:7,A:min,F:maj,C:maj,E:7,5,5,5,1,誘惑
+A:min,D:min,G:maj,C:maj7,F:maj,B:hdim,E:sus4,E:7,5,4,5,4,I will survive
+A:min,G:min7,F:maj7,C:maj,D:min7,E:min7,F:maj7,E:7,5,5,4,4,カゲロウデイズ
+F:maj,G:maj,E:min,C:maj,D:sus4,D:maj,E:min,G:maj,5,4,5,2,unravel
+F:maj7,G:7,A:min7,E:min7,D:min7,G:7,C:maj,A:aug,5,3,2,5,夏夜のマジック
+A:min,Ab:dim,G:maj,Gb:hdim,F:maj7,C:maj,Eb:dim,E:7,4,5,4,5,愛が生まれた日
+A:min,E:min,F:maj,C:maj,E:maj,A:min,D:min,E:maj,4,4,3,2,地上の星</script>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+
+/* ---------- chord parsing ---------- */
+const NOTE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+const QUAL = {
+  maj: [[0, 4, 7], ''], min: [[0, 3, 7], 'm'], dim: [[0, 3, 6], 'dim'], aug: [[0, 4, 8], 'aug'],
+  sus4: [[0, 5, 7], 'sus4'], sus2: [[0, 2, 7], 'sus2'],
+  '7': [[0, 4, 7, 10], '7'], maj7: [[0, 4, 7, 11], 'maj7'], min7: [[0, 3, 7, 10], 'm7'],
+  '6': [[0, 4, 7, 9], '6'], min6: [[0, 3, 7, 9], 'm6'],
+  dim7: [[0, 3, 6, 9], 'dim7'], hdim7: [[0, 3, 6, 10], 'm7-5'],
+  minmaj7: [[0, 3, 7, 11], 'mM7'], '7sus4': [[0, 5, 7, 10], '7sus4'], add9: [[0, 4, 7, 14], 'add9'],
+  '9': [[0, 4, 7, 10, 14], '9'], maj9: [[0, 4, 7, 11, 14], 'maj9'], min9: [[0, 3, 7, 10, 14], 'm9']
+};
+const ALIAS = { '': 'maj', m: 'min', hdim: 'hdim7', m7: 'min7', m7b5: 'hdim7', min7b5: 'hdim7', sus: 'sus4', m6: 'min6', m9: 'min9', mmaj7: 'minmaj7' };
+const RATE_KEYS = ['sadness', 'tension', 'strength', 'uniqueness'];
+
+function parseChord(rawIn) {
+  const raw = String(rawIn == null ? '' : rawIn).trim();
+  const s = raw.replace(/\s+/g, '').replace(/;/g, ':');
+  const m = s.match(/^([A-Ga-g])([#b]?):?(.*)$/);
+  if (!m) return { raw, ok: false, label: raw || '—' };
+  let q = m[3].toLowerCase();
+  if (q in ALIAS) q = ALIAS[q];
+  if (!(q in QUAL)) return { raw, ok: false, label: raw };
+  const root = m[1].toUpperCase() + m[2];
+  const pc = (NOTE[m[1].toUpperCase()] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) + 12) % 12;
+  return { raw, ok: true, pc, iv: QUAL[q][0], label: root + QUAL[q][1] };
+}
+
+function voicing(ch) {
+  let bass = 36 + ch.pc;
+  if (bass < 41) bass += 12;                       // F2..E3
+  const set = new Set();
+  // 4和音以上はルートをベースに任せて上声部から外す (maj7 の7度とルートが半音でぶつかるのを避ける)
+  const iv = ch.iv.length >= 4 ? ch.iv.filter(i => i % 12 !== 0) : ch.iv;
+  for (const i of iv) {
+    let n = 48 + ((ch.pc + i) % 12);
+    while (n < 55) n += 12;                        // G3..F#4, so neighbouring chords stay in one register
+    set.add(n);
+  }
+  return { bass, upper: [...set].sort((a, b) => a - b) };
+}
+
+/* ---------- CSV ---------- */
+function parseCSV(text) {
+  const rows = []; let row = [], cell = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQ) {
+      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else inQ = false; }
+      else cell += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else cell += ch;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim() !== ''));
+}
+
+function buildData(text) {
+  const rows = parseCSV(text.replace(/^﻿/, ''));
+  if (!rows.length) return [];
+  const head = rows[0].map(s => s.trim().toLowerCase());
+  const hasHead = head.includes('chord1');
+  const col = (name, fb) => { const i = head.indexOf(name); return hasHead && i >= 0 ? i : fb; };
+  const chordCols = Array.from({ length: 8 }, (_, i) => col('chord' + (i + 1), i));
+  const rateCols = RATE_KEYS.map((k, i) => col(k, 8 + i));
+  let noteCol = hasHead ? head.findIndex(h => h.startsWith('備考') || h === 'note' || h === 'notes') : -1;
+  if (noteCol < 0) noteCol = 12;
+  const out = [];
+  (hasHead ? rows.slice(1) : rows).forEach(r => {
+    const chords = chordCols.map(c => parseChord(r[c]));
+    if (!chords.some(c => c.ok)) return;
+    const rate = {};
+    RATE_KEYS.forEach((k, i) => { const v = Number(r[rateCols[i]]); rate[k] = Number.isFinite(v) ? Math.max(0, Math.min(5, v)) : 0; });
+    const note = (r[noteCol] || '').trim();
+    const no = out.length + 1;
+    out.push({
+      no, chords, rate, note,
+      hay: [no, note, ...chords.map(c => c.raw), ...chords.map(c => c.label)].join(' ').toLowerCase()
+    });
+  });
+  return out;
+}
+
+/* ---------- state ---------- */
+const S = {
+  data: [], view: [], sel: 0, name: 'dataset 1.csv',
+  playing: false, loop: false, bpm: 110, beats: 4, pattern: 'hold', tone: 'piano', vol: 0.8,
+  timer: null, nextTime: 0, nextStep: 0, queue: [], endAt: null, step: -1, previewTimer: null
+};
+const cur = () => S.data[S.sel];
+
+/* ---------- audio ---------- */
+let ctx = null, master = null, bus = null;
+const TONE_LEVEL = { piano: 1, pad: 0.75, chip: 0.42 };
+
+function ensureCtx() {
+  if (!ctx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) { say('このブラウザでは音を鳴らせません。別のブラウザで開いてください。'); return false; }
+    ctx = new AC();
+    const comp = ctx.createDynamicsCompressor();
+    master = ctx.createGain();
+    master.gain.value = S.vol;
+    master.connect(comp); comp.connect(ctx.destination);
+  }
+  if (ctx.state === 'suspended') ctx.resume();
+  return true;
+}
+function killBus() {
+  if (!bus) return;
+  const b = bus; bus = null;
+  const t = ctx.currentTime;
+  b.gain.cancelScheduledValues(t);
+  b.gain.setValueAtTime(b.gain.value, t);
+  b.gain.linearRampToValueAtTime(0, t + 0.04);
+  setTimeout(() => b.disconnect(), 150);
+}
+function newBus() { killBus(); bus = ctx.createGain(); bus.connect(master); }
+
+function playNote(midi, t, dur, vel, isBass) {
+  const f = 440 * Math.pow(2, (midi - 69) / 12);
+  const end = t + dur;
+  const tone = S.tone;
+  const v = vel * TONE_LEVEL[tone];
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  let dest = g, tail = 0.6;
+  const oscs = [];
+  const add = (type, freq, level, detune) => {
+    const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq;
+    if (detune) o.detune.value = detune;
+    const og = ctx.createGain(); og.gain.value = level;
+    o.connect(og); og.connect(dest); oscs.push(o);
+  };
+  if (tone === 'piano') {
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(Math.min(9000, f * 9), t);
+    lp.frequency.setTargetAtTime(Math.max(500, f * 2.2), t, 0.5);
+    lp.connect(g); dest = lp;
+    add('triangle', f, 1); add('sine', f * 2, 0.32); add('sine', f * 3, 0.1);
+    g.gain.linearRampToValueAtTime(v, t + 0.006);
+    g.gain.setTargetAtTime(0, t + 0.006, isBass ? 1.5 : 1.1);
+    g.gain.setTargetAtTime(0, end, 0.09);
+  } else if (tone === 'pad') {
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.value = isBass ? 700 : 1700; lp.Q.value = 0.6;
+    lp.connect(g); dest = lp;
+    add('sawtooth', f, 0.5, -7); add('sawtooth', f, 0.5, 7);
+    g.gain.linearRampToValueAtTime(v * 0.6, t + Math.min(0.09, dur * 0.4));
+    g.gain.setTargetAtTime(0, end, 0.12);
+    tail = 0.8;
+  } else {
+    add(isBass ? 'triangle' : 'square', f, isBass ? 2.2 : 1);
+    g.gain.linearRampToValueAtTime(v, t + 0.004);
+    g.gain.setTargetAtTime(v * 0.6, t + 0.004, 0.08);
+    g.gain.setTargetAtTime(0, end, 0.015);
+    tail = 0.15;
+  }
+  g.connect(bus);
+  for (const o of oscs) { o.start(t); o.stop(end + tail); }
+}
+
+function scheduleChord(ch, t, dur, pattern, beats, beat) {
+  if (!ch.ok) return;
+  const { bass, upper } = voicing(ch);
+  if (pattern === 'beat' && beats > 1) {
+    for (let b = 0; b < beats; b++) {
+      if (b % 2 === 0) playNote(bass, t + b * beat, Math.min(beat * 2, dur - b * beat), 0.26, true);
+      for (const n of upper) playNote(n, t + b * beat, beat * 0.92, b === 0 ? 0.17 : 0.13, false);
+    }
+  } else if (pattern === 'arp') {
+    playNote(bass, t, dur, 0.26, true);
+    const seq = upper.concat(upper.slice(1, -1).reverse());
+    const n = Math.max(2, beats * 2), stepLen = dur / n;
+    for (let i = 0; i < n; i++) playNote(seq[i % seq.length], t + i * stepLen, stepLen * 1.6, 0.24, false);
+  } else {
+    playNote(bass, t, dur, 0.26, true);
+    for (const n of upper) playNote(n, t, dur, 0.17, false);
+  }
+}
+
+function tick() {
+  const p = cur();
+  while (S.playing && S.nextTime < ctx.currentTime + 0.15) {
+    if (S.nextStep >= 8) {
+      if (S.loop) S.nextStep = 0;
+      else { S.endAt = S.nextTime; clearInterval(S.timer); S.timer = null; return; }
+    }
+    const beat = 60 / S.bpm, dur = beat * S.beats;
+    scheduleChord(p.chords[S.nextStep], S.nextTime, dur, S.pattern, S.beats, beat);
+    S.queue.push({ step: S.nextStep, t: S.nextTime });
+    S.nextTime += dur; S.nextStep++;
+  }
+}
+function frame() {
+  if (!S.playing) return;
+  const now = ctx.currentTime;
+  while (S.queue.length > 1 && S.queue[1].t <= now) S.queue.shift();
+  if (S.queue.length && S.queue[0].t <= now) setStep(S.queue[0].step);
+  if (S.endAt != null && now >= S.endAt) { stop(false); return; }
+  requestAnimationFrame(frame);
+}
+function start(fromStep) {
+  if (!cur() || !ensureCtx()) return;
+  clearTimeout(S.previewTimer);
+  clearInterval(S.timer);
+  newBus();
+  S.playing = true; S.queue = []; S.endAt = null;
+  S.nextStep = fromStep || 0; S.nextTime = ctx.currentTime + 0.06;
+  setStep(-1);
+  tick();
+  S.timer = setInterval(tick, 25);
+  requestAnimationFrame(frame);
+  paintPlay();
+}
+function stop(cut) {
+  clearInterval(S.timer); S.timer = null;
+  S.playing = false; S.queue = []; S.endAt = null;
+  if (cut !== false) killBus();
+  setStep(-1);
+  paintPlay();
+}
+function preview(i) {
+  const ch = cur().chords[i];
+  if (!ensureCtx()) return;
+  clearTimeout(S.previewTimer);
+  newBus();
+  scheduleChord(ch, ctx.currentTime + 0.03, 1.4, 'hold', 1, 1.4);
+  setStep(i);
+  S.previewTimer = setTimeout(() => { if (!S.playing) setStep(-1); }, 1450);
+}
+
+/* ---------- rendering ---------- */
+const stepsEl = $('steps'), rowsEl = $('rows'), keysEl = $('keys');
+const SVGNS = 'http://www.w3.org/2000/svg';
+const keyEls = {};
+
+function buildKeys() {
+  const WHITE = [0, 2, 4, 5, 7, 9, 11], lo = 36, hi = 71, W = 20;
+  let x = 0; const blacks = [];
+  for (let m = lo; m <= hi; m++) {
+    const pc = m % 12;
+    if (WHITE.includes(pc)) {
+      const r = document.createElementNS(SVGNS, 'rect');
+      r.setAttribute('x', x + 0.5); r.setAttribute('y', 0.5);
+      r.setAttribute('width', W); r.setAttribute('height', 60); r.setAttribute('rx', 2);
+      r.setAttribute('class', 'wk'); keysEl.appendChild(r); keyEls[m] = r;
+      if (pc === 0) {
+        const tx = document.createElementNS(SVGNS, 'text');
+        tx.setAttribute('x', x + 0.5 + W / 2); tx.setAttribute('y', 71); tx.setAttribute('text-anchor', 'middle');
+        tx.setAttribute('class', 'klabel'); tx.textContent = 'C' + (m / 12 - 1);
+        keysEl.appendChild(tx);
+      }
+      x += W;
+    } else blacks.push([m, x - 6]);
+  }
+  for (const [m, bx] of blacks) {
+    const r = document.createElementNS(SVGNS, 'rect');
+    r.setAttribute('x', bx + 0.5); r.setAttribute('y', 0.5);
+    r.setAttribute('width', 12); r.setAttribute('height', 37); r.setAttribute('rx', 1.5);
+    r.setAttribute('class', 'bk'); keysEl.appendChild(r); keyEls[m] = r;
+  }
+}
+
+function setStep(i) {
+  if (i === S.step) return;
+  S.step = i;
+  [...stepsEl.children].forEach((li, k) => li.firstChild.classList.toggle('on', k === i));
+  const row = rowsEl.querySelector('.row[aria-pressed="true"]');
+  if (row) row.querySelectorAll('.c').forEach((c, k) => c.classList.toggle('on', k === i));
+  for (const m in keyEls) keyEls[m].classList.remove('up', 'bass');
+  const p = cur();
+  if (i >= 0 && p && p.chords[i].ok) {
+    const v = voicing(p.chords[i]);
+    for (const n of v.upper) if (keyEls[n]) keyEls[n].classList.add('up');
+    if (keyEls[v.bass]) keyEls[v.bass].classList.add('bass');
+  }
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+const pad3 = n => String(n).padStart(3, '0');
+
+function paintDeck() {
+  const p = cur();
+  $('nowNo').textContent = p ? 'No. ' + pad3(p.no) + ' / ' + pad3(S.data.length) : '';
+  $('nowTitle').textContent = p ? (p.note || '(備考なし)') : '';
+  stepsEl.textContent = '';
+  $('rates').textContent = '';
+  if (!p) return;
+  p.chords.forEach((ch, i) => {
+    const li = el('li');
+    const b = el('button', 'step' + (ch.ok ? '' : ' bad'));
+    b.type = 'button'; b.dataset.i = i;
+    b.append(el('span', 'step-n', String(i + 1)), el('span', 'step-name', ch.label), el('span', 'step-raw', ch.ok ? ch.raw : '読めない表記'));
+    li.append(b); stepsEl.append(li);
+  });
+  for (const k of RATE_KEYS) {
+    const wrap = el('div', 'rate'), dd = el('dd'), pips = el('span', 'pips');
+    for (let i = 1; i <= 5; i++) pips.append(el('i', i <= p.rate[k] ? 'f' : ''));
+    dd.append(pips, el('b', '', String(p.rate[k])));
+    wrap.append(el('dt', '', k), dd);
+    $('rates').append(wrap);
+  }
+  S.step = -2; setStep(-1);
+}
+
+function paintRows() {
+  const q = $('q').value.trim().toLowerCase(), k = $('sort').value;
+  let list = S.data.filter(p => !q || p.hay.includes(q));
+  if (k !== 'no') list = list.slice().sort((a, b) => b.rate[k] - a.rate[k] || a.no - b.no);
+  S.view = list;
+  rowsEl.textContent = '';
+  const frag = document.createDocumentFragment();
+  for (const p of list) {
+    const b = el('button', 'row');
+    b.type = 'button'; b.dataset.no = p.no;
+    b.setAttribute('aria-pressed', String(p === cur()));
+    const head = el('span', 'row-head');
+    const bars = el('span', 'bars');
+    bars.setAttribute('role', 'img');
+    bars.setAttribute('aria-label', RATE_KEYS.map(r => r + ' ' + p.rate[r]).join(', '));
+    bars.title = RATE_KEYS.map(r => r + ' ' + p.rate[r]).join(' / ');
+    for (const r of RATE_KEYS) { const i = el('i'); i.style.setProperty('--h', p.rate[r]); bars.append(i); }
+    head.append(el('span', 'row-no', pad3(p.no)), el('span', 'row-note', p.note || '(備考なし)'), bars);
+    const chords = el('span', 'row-chords');
+    for (const ch of p.chords) { const c = el('span', 'c' + (ch.ok ? '' : ' bad'), ch.label); c.title = ch.raw; chords.append(c); }
+    b.append(head, chords);
+    frag.append(b);
+  }
+  if (!list.length) frag.append(el('p', 'empty', '一致するコード進行がありません。検索語を変えてください。'));
+  rowsEl.append(frag);
+  $('count').textContent = S.data.length + '件中 ' + list.length + '件を表示';
+}
+
+function paintPlay() {
+  $('playText').textContent = S.playing ? '停止' : '再生';
+  $('playIcon').setAttribute('d', S.playing ? 'M2 2h10v10H2z' : 'M3 1l10 6-10 6z');
+}
+function paintTop() {
+  const bad = S.data.reduce((n, p) => n + p.chords.filter(c => !c.ok).length, 0);
+  $('topSub').textContent = S.name + '　' + S.data.length + '件のコード進行' + (bad ? '　読めない和音 ' + bad + '個' : '');
+}
+function say(text) { const m = $('msg'); m.textContent = text || ''; m.hidden = !text; }
+
+function select(idx, play) {
+  if (idx < 0 || idx >= S.data.length) return;
+  const was = S.playing;
+  if (was) stop();
+  S.sel = idx;
+  rowsEl.querySelectorAll('.row').forEach(r => r.setAttribute('aria-pressed', String(Number(r.dataset.no) === S.data[idx].no)));
+  paintDeck();
+  if (play) start(0);
+}
+function move(d) {
+  if (!S.view.length) return;
+  const i = S.view.indexOf(cur());
+  const n = S.view[i < 0 ? 0 : Math.max(0, Math.min(S.view.length - 1, i + d))];
+  select(S.data.indexOf(n), S.playing);
+  const row = rowsEl.querySelector('.row[aria-pressed="true"]');
+  if (row) row.scrollIntoView({ block: 'nearest' });
+}
+function load(text, name) {
+  const data = buildData(text);
+  if (!data.length) { say('このCSVからコード進行を読み取れませんでした。Chord1〜Chord8 の列があるか確認してください。'); return false; }
+  if (S.playing) stop();
+  say('');
+  S.data = data; S.sel = 0; if (name) S.name = name;
+  paintTop(); paintRows(); paintDeck();
+  return true;
+}
+
+/* ---------- events ---------- */
+$('play').addEventListener('click', () => S.playing ? stop() : start(0));
+$('prev').addEventListener('click', () => move(-1));
+$('next').addEventListener('click', () => move(1));
+$('loop').addEventListener('change', e => { S.loop = e.target.checked; });
+$('bpm').addEventListener('input', e => { S.bpm = Number(e.target.value); $('bpmOut').textContent = S.bpm + ' BPM'; });
+$('vol').addEventListener('input', e => {
+  S.vol = Number(e.target.value) / 100; $('volOut').textContent = e.target.value;
+  if (master) master.gain.setTargetAtTime(S.vol, ctx.currentTime, 0.02);
+});
+function seg(id, key, cast) {
+  $(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    S[key] = cast(b.dataset.v);
+    $(id).querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  });
+}
+seg('segBeats', 'beats', Number); seg('segPattern', 'pattern', String); seg('segTone', 'tone', String);
+
+stepsEl.addEventListener('click', e => {
+  const b = e.target.closest('.step'); if (!b) return;
+  const i = Number(b.dataset.i);
+  if (S.playing) start(i); else preview(i);
+});
+rowsEl.addEventListener('click', e => {
+  const r = e.target.closest('.row'); if (!r) return;
+  const idx = S.data.findIndex(p => p.no === Number(r.dataset.no));
+  if (idx === S.sel && S.playing) stop(); else select(idx, true);
+});
+$('q').addEventListener('input', paintRows);
+$('sort').addEventListener('change', paintRows);
+$('csvFile').addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => load(String(fr.result), f.name);
+  fr.onerror = () => say('ファイルを読み込めませんでした。もう一度選び直してください。');
+  fr.readAsText(f);
+});
+document.addEventListener('keydown', e => {
+  const t = e.target, tag = t.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (e.code === 'Space' && tag !== 'BUTTON') { e.preventDefault(); S.playing ? stop() : start(0); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
+});
+
+/* ---------- boot ---------- */
+S.bpm = Number($('bpm').value); $('bpmOut').textContent = S.bpm + ' BPM';
+S.vol = Number($('vol').value) / 100; $('volOut').textContent = $('vol').value;
+S.loop = $('loop').checked;
+buildKeys();
+load($('csvData').textContent, 'dataset 1.csv');
+
+if (typeof window !== 'undefined') window.__chordTest = { parseChord, buildData, voicing };
+})();
+</script>
+
+</body></html>
